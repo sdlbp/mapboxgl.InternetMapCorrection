@@ -7,9 +7,9 @@
     <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no' />
     <script src='lib/mapbox-gl.js'></script>
     <link href='lib/mapbox-gl.css' rel='stylesheet' />
-    
+
     <!-- <script src='../dist/rasterTileLayer-src.js'></script> -->
-    <script src='../dist/rasterTileLayer.js'></script>
+    <script src='../dist/rasterTileLayer-src.js?v=1'></script>
 
     <style>
         body {
@@ -41,13 +41,13 @@
 
 <script>
     var map = new mapboxgl.Map({
-        container: 'map', 
+        container: 'map',
         style:  {
             "version": 8,
             layers:[],
             sources:{}
         },
-        center: [116.39104,39.90502], 
+        center: [116.39104,39.90502],
         zoom: 15,
         hash: true
     });
@@ -97,7 +97,7 @@
             ['gdyxzj', 'GaoDe.Satellite.Annotion']
         ])
     }
-    
+
     //百度矢量
     function bdsl(){
         addRasterTileLayer([
@@ -150,7 +150,7 @@
         ])
     }
 
-    
+
     var loadLayer=[]
     function addRasterTileLayer(layerList, key){
         loadLayer.forEach(function(layerId){

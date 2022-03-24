@@ -12,11 +12,11 @@ export function lonLatToTileNumbers(lon_deg, lat_deg, zoom) {
     var lat_rad = (pi/180)*lat_deg     //math.radians(lat_deg)  角度转弧度
     var n = Math.pow(2, zoom)
     var xtile = parseInt((lon_deg + 180.0) / 360.0 * n)
-    var ytile = parseInt((1.0 - Math.asinh(Math.tan(lat_rad)) / pi) / 2.0 * n)  
+    var ytile = parseInt((1.0 - Math.asinh(Math.tan(lat_rad)) / pi) / 2.0 * n)
     return [xtile, ytile]
 }
 
-//xyz协议瓦片编号转经纬度
+//xyz协议瓦片编号瓦片左上角转经纬度
 export function tileNumbersToLonLat(xtile, ytile, zoom) {
     let n = Math.pow(2, zoom)
     let lon_deg = xtile / n * 360.0 - 180.0
