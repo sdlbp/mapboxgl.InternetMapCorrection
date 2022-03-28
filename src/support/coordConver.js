@@ -7,7 +7,7 @@ var ee = 0.00669342162296594323;
 var x_pi = pi * 3000.0 / 180.0;
 var R = 6378137;
 
-//经纬度转xyz协议瓦片编号
+// 经纬度转xyz协议瓦片编号
 export function lonLatToTileNumbers(lon_deg, lat_deg, zoom) {
     var lat_rad = (pi/180)*lat_deg     //math.radians(lat_deg)  角度转弧度
     var n = Math.pow(2, zoom)
@@ -16,7 +16,7 @@ export function lonLatToTileNumbers(lon_deg, lat_deg, zoom) {
     return [xtile, ytile]
 }
 
-//xyz协议瓦片编号瓦片左上角转经纬度
+// xyz协议瓦片编号瓦片左上角转经纬度
 export function tileNumbersToLonLat(xtile, ytile, zoom) {
     let n = Math.pow(2, zoom)
     let lon_deg = xtile / n * 360.0 - 180.0

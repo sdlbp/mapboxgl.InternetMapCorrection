@@ -11,7 +11,7 @@ import { getDistanceScales, zoomToScale } from './support/web-mercator.js';
 import * as mat4 from 'gl-matrix/mat4';
 import * as vec4 from 'gl-matrix/vec4';
 
-console.log('--lbp 13', 'customTileLayer.js', '', '');
+console.log('--lbp 113', 'customTileLayer.js', '', '');
 
 export default class customTileLayer {
   constructor(layerId, url, options) {
@@ -27,6 +27,7 @@ export default class customTileLayer {
 
       minZoom: 3,
       maxZoom: 18,
+      // TODO 两种方式区别
       tileType: 'xyz'   //bd09,xyz
     }
     setOptions(this, options)   //合并属性
@@ -54,7 +55,6 @@ export default class customTileLayer {
 
     this.transformBaidu = new TransformClassBaidu()
   }
-
 
   onAdd(map, gl) {
     this.map = map;
@@ -125,7 +125,6 @@ export default class customTileLayer {
       "varying vec2 v_TextCoord; " +
       "void main() {" +
       "   gl_FragColor = texture2D(u_Sampler, v_TextCoord);" +
-      // "    gl_FragColor = vec4(1.0, 0.0, 0.0, 0.5);" +
       "}";
 
     //初始化顶点着色器
@@ -154,6 +153,65 @@ export default class customTileLayer {
       }
     })
     this.update(gl, map)
+  }
+
+  //渲染
+  render(gl, matrix) {
+
+    if (this.map.getZoom() < this.options.minZoom || this.map.getZoom() > this.options.maxZoom) return
+
+    //记录变换矩阵，用于瓦片加载后主动绘制
+    this.matrix = matrix;
+
+    //应用着色程序
+    //必须写到这里，不能写到onAdd中，不然gl中的着色程序可能不是上面写的，会导致下面的变量获取不到
+    gl.useProgram(this.program);
+
+    for (var tile of this.showTiles) {
+      if (!tile.isLoad) continue;
+
+      // region 纹理映射
+      // 创建纹理对象
+      var texture = gl.createTexture();
+      // 绑定纹理对象
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      // 对纹理进行Y轴反转
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);
+      // 配置纹理参数
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.MIRRORED_REPEAT);
+      // 配置纹理图像
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, tile.img);
+      // 获取纹理的存储位置
+      var u_Sampler = gl.getUniformLocation(this.program, 'u_Sampler');
+      // 将0号纹理传递给着色器
+      gl.uniform1i(u_Sampler, 0);
+      // endregion
+
+      gl.bindBuffer(gl.ARRAY_BUFFER, tile.buffer);
+      // 设置从缓冲区获取顶点数据的规则
+      gl.vertexAttribPointer(this.a_Pos, tile.PosParam.size, gl.FLOAT, false, tile.PosParam.stride, tile.PosParam.offset);
+      gl.vertexAttribPointer(this.a_TextCoord, tile.TextCoordParam.size, gl.FLOAT, false, tile.TextCoordParam.stride, tile.TextCoordParam.offset);
+      // 激活顶点数据缓冲区
+      gl.enableVertexAttribArray(this.a_Pos);
+      gl.enableVertexAttribArray(this.a_TextCoord);
+
+      // 设置位置的顶点参数
+      this.setVertex(gl)
+
+      // 开启阿尔法混合，实现注记半透明效果
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+      // 绘制图形
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    }
+  }
+
+  //当map移除当前图层时调用
+  onRemove(map, gl) {
+    this.isLayerShow = false;
   }
 
   update(gl, map) {
@@ -188,9 +246,9 @@ export default class customTileLayer {
         }
         currentTiles.push(xyz)
 
-        //把瓦片号对应的经纬度缓存起来，
-        //存起来是因为贴纹理时需要瓦片4个角的经纬度，这样可以避免重复计算
-        //行和列向外多计算一个瓦片数，这样保证瓦片4个角都有经纬度可以取到
+        // 把瓦片号对应的经纬度缓存起来，
+        // 存起来是因为贴纹理时需要瓦片4个角的经纬度，这样可以避免重复计算
+        // 因为是保存的左上角经纬度，行和列向外多计算一个瓦片数，这样保证瓦片4个角都有经纬度可以取到
         this.addGridCache(xyz, 0, 0)
         if (x === maxTile[0]) this.addGridCache(xyz, 1, 0)
         if (y === maxTile[1]) this.addGridCache(xyz, 0, 1)
@@ -198,7 +256,7 @@ export default class customTileLayer {
       }
     }
 
-    //瓦片设置为从中间向周边的排序
+    // region 瓦片设置为从中间向周边的排序
     if (this.options.tileType === 'xyz') {
       var centerTile = lonLatToTileNumbers(center.lng, center.lat, zoom)  //计算中心点所在的瓦片号
     } else if (this.options.tileType === 'bd09') {
@@ -207,22 +265,24 @@ export default class customTileLayer {
     currentTiles.sort((a, b) => {
       return this.tileDistance(a, centerTile) - this.tileDistance(b, centerTile);
     });
+    // endregion
 
     //加载瓦片
     this.showTiles = [];
     for (var xyz of currentTiles) {
-      //走缓存或新加载
-      if (this.tileCache[this.createTileKey(xyz)]) {
-        this.showTiles.push(this.tileCache[this.createTileKey(xyz)])
+      var titleKey = this.createTileKey(xyz)
+      // 走缓存或新加载
+      if (this.tileCache[titleKey]) {
+        this.showTiles.push(this.tileCache[titleKey])
       } else {
         var tile = this.createTile(gl, xyz)
         this.showTiles.push(tile);
-        this.tileCache[this.createTileKey(xyz)] = tile;
+        this.tileCache[titleKey] = tile;
       }
     }
   }
 
-  //缓存瓦片号对应的经纬度
+  // 缓存瓦片号对应的经纬度
   addGridCache(xyz, xPlus, yPlus) {
     var key = this.createTileKey(xyz.x + xPlus, xyz.y + yPlus, xyz.z)
     if (!this.gridCache[key]) {
@@ -234,14 +294,14 @@ export default class customTileLayer {
     }
   }
 
-  //计算两个瓦片编号的距离
+  // 计算两个瓦片编号的距离
   tileDistance(tile1, tile2) {
     // 计算直角三角形斜边长度，c（斜边）=√（a²+b²）。（a，b为两直角边）
-    // 欧式距离需要开根号，这里是否开根号对排序没有影响
+    // 欧式距离需要开根号，这里是否开根号对排序没有影响，为了性能优化，选择不开根号
     return Math.pow((tile1.x - tile2[0]), 2) + Math.pow((tile1.y - tile2[1]), 2)
   }
 
-  //创建瓦片id
+  // 创建瓦片id
   createTileKey(xyz, y, z) {
     if (xyz instanceof Object) {
       return xyz.z + '/' + xyz.x + '/' + xyz.y;
@@ -265,8 +325,7 @@ export default class customTileLayer {
       xyz: xyz
     };
 
-
-    //瓦片编号转经纬度，并进行偏移
+    // 瓦片编号转经纬度，并进行偏移
     var leftTop, rightTop, leftBottom, rightBottom;
     if (this.options.tileType === 'xyz') {
       leftTop = this.gridCache[this.createTileKey(xyz)]
@@ -280,32 +339,28 @@ export default class customTileLayer {
       rightBottom = this.gridCache[this.createTileKey(xyz.x + 1, xyz.y, xyz.z)]
     }
 
-    //顶点坐标+纹理坐标
+    // 顶点坐标+纹理坐标
     var attrData = new Float32Array([
       leftTop.lng, leftTop.lat, 0.0, 1.0,
       leftBottom.lng, leftBottom.lat, 0.0, 0.0,
       rightTop.lng, rightTop.lat, 1.0, 1.0,
       rightBottom.lng, rightBottom.lat, 1.0, 0.0
     ])
-    // var attrData = new Float32Array([
-    //     116.38967958133532, 39.90811009556515, 0.0, 1.0,
-    //     116.38967958133532, 39.90294980726742, 0.0, 0.0,
-    //     116.39486013141436, 39.90811009556515, 1.0, 1.0,
-    //     116.39486013141436, 39.90294980726742, 1.0, 0.0
-    // ])
+    console.log('--lbp 349', 'customTileLayer.js', 'createTile', attrData);
+
     var FSIZE = attrData.BYTES_PER_ELEMENT;
-    //创建缓冲区并传入数据
+    // 创建缓冲区并传入数据
     var buffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
     gl.bufferData(gl.ARRAY_BUFFER, attrData, gl.STATIC_DRAW);
     tile.buffer = buffer;
-    //从缓冲区中获取顶点数据的参数
+    // 从缓冲区中获取顶点数据的参数
     tile.PosParam = {
       size: 2,
       stride: FSIZE * 4,
       offset: 0
     }
-    //从缓冲区中获取纹理数据的参数
+    // 从缓冲区中获取纹理数据的参数
     tile.TextCoordParam = {
       size: 2,
       stride: FSIZE * 4,
@@ -315,15 +370,7 @@ export default class customTileLayer {
     //加载瓦片
     var img = new Image();
     img.onload = () => {
-      // 创建纹理对象
-      tile.texture = gl.createTexture();
-      //向target绑定纹理对象
-      gl.bindTexture(gl.TEXTURE_2D, tile.texture);
-      //对纹理进行Y轴反转
-      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);
-      //配置纹理图像
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
-
+      tile.img = img;
       tile.isLoad = true;
 
       this.map.triggerRepaint()  //主动让地图重绘
@@ -334,70 +381,18 @@ export default class customTileLayer {
     return tile;
   }
 
-
-  //渲染
-  render(gl, matrix) {
-
-    if (this.map.getZoom() < this.options.minZoom || this.map.getZoom() > this.options.maxZoom) return
-
-    //记录变换矩阵，用于瓦片加载后主动绘制
-    this.matrix = matrix;
-
-    //应用着色程序
-    //必须写到这里，不能写到onAdd中，不然gl中的着色程序可能不是上面写的，会导致下面的变量获取不到
-    gl.useProgram(this.program);
-
-    for (var tile of this.showTiles) {
-      if (!tile.isLoad) continue;
-
-      //向target绑定纹理对象
-      gl.bindTexture(gl.TEXTURE_2D, tile.texture);
-      //开启0号纹理单元
-      gl.activeTexture(gl.TEXTURE0);
-      //配置纹理参数
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.MIRRORED_REPEAT);
-      // 获取纹理的存储位置
-      var u_Sampler = gl.getUniformLocation(this.program, 'u_Sampler');
-      //将0号纹理传递给着色器
-      gl.uniform1i(u_Sampler, 0);
-
-
-      gl.bindBuffer(gl.ARRAY_BUFFER, tile.buffer);
-      //设置从缓冲区获取顶点数据的规则
-      gl.vertexAttribPointer(this.a_Pos, tile.PosParam.size, gl.FLOAT, false, tile.PosParam.stride, tile.PosParam.offset);
-      gl.vertexAttribPointer(this.a_TextCoord, tile.TextCoordParam.size, gl.FLOAT, false, tile.TextCoordParam.stride, tile.TextCoordParam.offset);
-      //激活顶点数据缓冲区
-      gl.enableVertexAttribArray(this.a_Pos);
-      gl.enableVertexAttribArray(this.a_TextCoord);
-
-      // 设置位置的顶点参数
-      this.setVertex(gl)
-
-      //开启阿尔法混合，实现注记半透明效果
-      gl.enable(gl.BLEND);
-      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-
-      //绘制图形
-      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-    }
-
-  }
-
-  // 设置位置的顶点参数
-  //参考：https://github.com/xiaoiver/custom-mapbox-layer/blob/master/src/layers/PointCloudLayer2.ts
+  // 设置位置的顶点参数 TODO 很重要吃透
+  // 参考：https://github.com/xiaoiver/custom-mapbox-layer/blob/master/src/layers/PointCloudLayer2.ts
   setVertex(gl) {
     const currentZoomLevel = this.map.getZoom();
     const bearing = this.map.getBearing();
     const pitch = this.map.getPitch();
     const center = this.map.getCenter();
-
+    const devicePixelRatio = window.devicePixelRatio;
     const viewport = new WebMercatorViewport({
-      // width: gl.drawingBufferWidth*1.11,
-      // height: gl.drawingBufferHeight*1.11,
-      width: gl.drawingBufferWidth,
-      height: gl.drawingBufferHeight,
+      // TODO 有可能和屏幕有关
+      width: gl.drawingBufferWidth / devicePixelRatio,
+      height: gl.drawingBufferHeight / devicePixelRatio,
 
       longitude: center.lng,
       latitude: center.lat,
@@ -406,7 +401,6 @@ export default class customTileLayer {
       bearing,
     });
 
-    // @ts-ignore
     const { viewProjectionMatrix, projectionMatrix, viewMatrix, viewMatrixUncentered } = viewport;
 
     let drawParams = {
@@ -471,10 +465,5 @@ export default class customTileLayer {
     gl.uniform2fv(gl.getUniformLocation(this.program, "u_viewport_center"), drawParams['u_viewport_center']);
     gl.uniform4fv(gl.getUniformLocation(this.program, "u_viewport_center_projection"), drawParams['u_viewport_center_projection']);
 
-  }
-
-  //当map移除当前图层时调用
-  onRemove(map, gl) {
-    this.isLayerShow = false;
   }
 }
