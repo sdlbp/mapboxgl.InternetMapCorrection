@@ -7,11 +7,12 @@ import TransformClassBaidu from './support/transform-class-baidu'
 import { setOptions, template } from './support/Util.js'
 import WebMercatorViewport from 'viewport-mercator-project';
 import { getDistanceScales, zoomToScale } from './support/web-mercator.js';
-
+import fs from './shaders/fs.glsl';
+import vs from './shaders/vs.glsl';
 import * as mat4 from 'gl-matrix/mat4';
 import * as vec4 from 'gl-matrix/vec4';
 
-console.log('--lbp 113', 'customTileLayer.js', '', '');
+console.log('--lbp 14', 'customTileLayer.js', '', vs);
 
 export default class customTileLayer {
   constructor(layerId, url, options) {
@@ -118,22 +119,25 @@ export default class customTileLayer {
       "   gl_Position = u_matrix * project_pos + u_viewport_center_projection;" +
       "   v_TextCoord = a_TextCoord;" +
       "}";
-
-    var fragmentSource = "" +
-      "precision mediump float;" +
-      "uniform sampler2D u_Sampler; " +
-      "varying vec2 v_TextCoord; " +
-      "void main() {" +
-      "   gl_FragColor = texture2D(u_Sampler, v_TextCoord);" +
-      "}";
-
+    
     //初始化顶点着色器
     var vertexShader = gl.createShader(gl.VERTEX_SHADER);
+
+    // gl.shaderSource(vertexShader, vs);
     gl.shaderSource(vertexShader, vertexSource);
     gl.compileShader(vertexShader);
+    // Check the result of compilation
+    var compiled = gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS);
+    if (!compiled) {
+      var error = gl.getShaderInfoLog(vertexShader);
+      console.log('Failed to compile shader: ' + error);
+      return null;
+    }
+
     //初始化片元着色器
     var fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
-    gl.shaderSource(fragmentShader, fragmentSource);
+
+    gl.shaderSource(fragmentShader, fs);
     gl.compileShader(fragmentShader);
     //初始化着色器程序
     this.program = gl.createProgram();
@@ -151,6 +155,9 @@ export default class customTileLayer {
       if (this.isLayerShow) {
         this.update(gl, map)
       }
+    })
+    map.on('moveend', () => {
+      console.log('--lbp 169', 'customTileLayer.js', 'moveend', map.getZoom());
     })
     this.update(gl, map)
   }
@@ -346,7 +353,6 @@ export default class customTileLayer {
       rightTop.lng, rightTop.lat, 1.0, 1.0,
       rightBottom.lng, rightBottom.lat, 1.0, 0.0
     ])
-    console.log('--lbp 349', 'customTileLayer.js', 'createTile', attrData);
 
     var FSIZE = attrData.BYTES_PER_ELEMENT;
     // 创建缓冲区并传入数据
@@ -390,7 +396,6 @@ export default class customTileLayer {
     const center = this.map.getCenter();
     const devicePixelRatio = window.devicePixelRatio;
     const viewport = new WebMercatorViewport({
-      // TODO 有可能和屏幕有关
       width: gl.drawingBufferWidth / devicePixelRatio,
       height: gl.drawingBufferHeight / devicePixelRatio,
 
@@ -431,7 +436,7 @@ export default class customTileLayer {
 
       const projectionCenter = vec4.transformMat4(
         [],
-        [ positionPixels[0], positionPixels[1], 0.0, 1.0 ],
+        [positionPixels[0], positionPixels[1], 0.0, 1.0],
         viewProjectionMatrix
       );
 
@@ -442,13 +447,12 @@ export default class customTileLayer {
       // viewMatrix = new Matrix4(viewMatrixUncentered || viewMatrix)
       //   .multiplyRight(VECTOR_TO_POINT_MATRIX);
       let viewProjectionMatrix2 = mat4.multiply([], projectionMatrix, viewMatrix2);
-      const VECTOR_TO_POINT_MATRIX = [ 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0 ];
+      const VECTOR_TO_POINT_MATRIX = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0];
       viewProjectionMatrix2 = mat4.multiply([], viewProjectionMatrix2, VECTOR_TO_POINT_MATRIX);
 
       drawParams['u_matrix'] = viewProjectionMatrix2;
       drawParams['u_is_offset'] = true;
-      drawParams['u_viewport_center'] = [ Math.fround(center.lng), Math.fround(center.lat) ];
-      // @ts-ignore
+      drawParams['u_viewport_center'] = [Math.fround(center.lng), Math.fround(center.lat)];
       drawParams['u_viewport_center_projection'] = projectionCenter;
       drawParams['u_pixels_per_degree'] = pixelsPerDegree && pixelsPerDegree.map(p => Math.fround(p));
       drawParams['u_pixels_per_degree2'] = pixelsPerDegree2 && pixelsPerDegree2.map(p => Math.fround(p));
