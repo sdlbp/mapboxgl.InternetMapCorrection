@@ -12,8 +12,6 @@ import vs from './shaders/vs.glsl';
 import * as mat4 from 'gl-matrix/mat4';
 import * as vec4 from 'gl-matrix/vec4';
 
-console.log('--lbp 14', 'customTileLayer.js', '', vs);
-
 export default class customTileLayer {
   constructor(layerId, url, options) {
     this.id = layerId;
