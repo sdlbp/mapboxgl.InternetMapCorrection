@@ -24,7 +24,10 @@ vec3 project_scale(vec3 position) {
 
 vec2 project_mercator(vec2 lnglat) {
     float x = lnglat.x;
-    return vec2(radians(x) + PI, PI - log(tan(PI * 0.25 + radians(lnglat.y) * 0.5)));
+    return vec2(
+    radians(x) + PI,
+    PI - log(tan(PI * 0.25 + radians(lnglat.y) * 0.5))
+    );
 }
 
 vec4 project_offset(vec4 offset) {
@@ -40,7 +43,11 @@ vec4 project_position(vec4 position) {
         float Y = position.y - u_viewport_center.y;
         return project_offset(vec4(X, Y, position.z, position.w));
     } else {
-        return vec4(project_mercator(position.xy) * WORLD_SCALE * u_project_scale, project_scale(position.z), position.w);
+        return vec4(
+        project_mercator(position.xy) * WORLD_SCALE * u_project_scale,
+        project_scale(position.z),
+        position.w
+        );
     }
 }
 

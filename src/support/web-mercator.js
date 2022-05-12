@@ -1,5 +1,5 @@
 /**
- * borrow from 
+ * borrow from
  * https://github.com/uber-common/viewport-mercator-project/blob/master/src/web-mercator-utils.js
  */
 
@@ -44,7 +44,7 @@ export function getDistanceScales(options){
   scale = scale !== undefined ? scale : zoomToScale(zoom);
 
   const result = {};
-  const worldSize = TILE_SIZE * scale * window.devicePixelRatio;
+  const worldSize = TILE_SIZE * scale;
   const latCosine = Math.cos(latitude * DEGREES_TO_RADIANS);
 
   /**
